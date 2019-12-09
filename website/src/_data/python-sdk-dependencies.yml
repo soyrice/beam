@@ -10,12 +10,662 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-sdk_version:
-  - sdk_version_number: 2.17.0
-    dependencies:
-      - package_name: avro-python3
-        package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
-      - package_name: avro
-        package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
-      - package_name: cachetools
-        package_version: '>=3.1.0,<4'
+sdk_versions:
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
+  - package_name: avro-python3
+    package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
+  - package_name: cachetools
+    package_version: '>=3.1.0,<4'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.3.0,<0.3.1'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: funcsigs
+    package_version: '>=1.0.2,<2; python_version < "3.0"'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.2.0,<4.0.0; python_version < "3.0"'
+  - package_name: google-apitools
+    package_version: '>=0.5.28,<0.5.29'
+  - package_name: google-cloud-bigquery
+    package_version: '>=1.6.0,<1.18.0'
+  - package_name: google-cloud-bigtable
+    package_version: '>=0.31.1,<1.1.0'
+  - package_name: google-cloud-core
+    package_version: '>=0.28.1,<2'
+  - package_name: google-cloud-datastore
+    package_version: '>=1.7.1,<1.8.0'
+  - package_name: google-cloud-pubsub
+    package_version: '>=0.39.0,<1.1.0'
+  - package_name: googledatastore
+    package_version: '>=7.0.1,<7.1; python_version < "3.0"'
+  - package_name: grpcio
+    package_version: '>=1.12.1,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.12.0'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<4'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4; python_version < "3.0"'
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pyarrow
+    package_version: '>=0.15.1,<0.16.0; python_version >= "3.0" or platform_system
+      != "Windows"'
+  - package_name: pydot
+    package_version: '>=1.2.0,<2'
+  - package_name: pymongo
+    package_version: '>=3.8.0,<4.0.0'
+  - package_name: python-dateutil
+    package_version: '>=2.8.0,<3'
+  - package_name: pytz
+    package_version: '>=2018.3'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0; python_version < "3.0"'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.17.0
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
+  - package_name: avro-python3
+    package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
+  - package_name: cachetools
+    package_version: '>=3.1.0,<4'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.3.0,<0.3.1'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: funcsigs
+    package_version: '>=1.0.2,<2; python_version < "3.0"'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.2.0,<4.0.0; python_version < "3.0"'
+  - package_name: google-apitools
+    package_version: '>=0.5.28,<0.5.29'
+  - package_name: google-cloud-bigquery
+    package_version: '>=1.6.0,<1.18.0'
+  - package_name: google-cloud-bigtable
+    package_version: '>=0.31.1,<1.1.0'
+  - package_name: google-cloud-core
+    package_version: '>=0.28.1,<2'
+  - package_name: google-cloud-datastore
+    package_version: '>=1.7.1,<1.8.0'
+  - package_name: google-cloud-pubsub
+    package_version: '>=0.39.0,<1.1.0'
+  - package_name: googledatastore
+    package_version: '>=7.0.1,<7.1; python_version < "3.0"'
+  - package_name: grpcio
+    package_version: '>=1.12.1,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.12.0'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<4'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4; python_version < "3.0"'
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pyarrow
+    package_version: '>=0.11.1,<0.15.0; python_version >= "3.0" or platform_system
+      != "Windows"'
+  - package_name: pydot
+    package_version: '>=1.2.0,<2'
+  - package_name: pymongo
+    package_version: '>=3.8.0,<4.0.0'
+  - package_name: python-dateutil
+    package_version: '>=2.8.0,<3'
+  - package_name: pytz
+    package_version: '>=2018.3'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0; python_version < "3.0"'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.16.0
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
+  - package_name: avro-python3
+    package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
+  - package_name: cachetools
+    package_version: '>=3.1.0,<4'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.9,<0.2.10'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.2.0,<4.0.0; python_version < "3.0"'
+  - package_name: google-apitools
+    package_version: '>=0.5.28,<0.5.29'
+  - package_name: google-cloud-bigquery
+    package_version: '>=1.6.0,<1.18.0'
+  - package_name: google-cloud-bigtable
+    package_version: '>=0.31.1,<0.33.0'
+  - package_name: google-cloud-core
+    package_version: '>=0.28.1,<2'
+  - package_name: google-cloud-datastore
+    package_version: '>=1.7.1,<1.8.0'
+  - package_name: google-cloud-pubsub
+    package_version: '>=0.39.0,<0.40.0'
+  - package_name: googledatastore
+    package_version: '>=7.0.1,<7.1; python_version < "3.0"'
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.12.0'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<4'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4; python_version < "3.0"'
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pyarrow
+    package_version: '>=0.11.1,<0.15.0; python_version >= "3.0" or platform_system
+      != "Windows"'
+  - package_name: pydot
+    package_version: '>=1.2.0,<2'
+  - package_name: pymongo
+    package_version: '>=3.8.0,<4.0.0'
+  - package_name: pytz
+    package_version: '>=2018.3'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0; python_version < "3.0"'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.15.0
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
+  - package_name: avro-python3
+    package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
+  - package_name: cachetools
+    package_version: '>=3.1.0,<4'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.9,<0.2.10'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.2.0,<4.0.0; python_version < "3.0"'
+  - package_name: google-apitools
+    package_version: '>=0.5.28,<0.5.29'
+  - package_name: google-cloud-bigquery
+    package_version: '>=1.6.0,<1.7.0'
+  - package_name: google-cloud-bigtable
+    package_version: '>=0.31.1,<0.33.0'
+  - package_name: google-cloud-core
+    package_version: '>=0.28.1,<0.30.0'
+  - package_name: google-cloud-datastore
+    package_version: '>=1.7.1,<1.8.0'
+  - package_name: google-cloud-pubsub
+    package_version: '>=0.39.0,<0.40.0'
+  - package_name: googledatastore
+    package_version: '>=7.0.1,<7.1; python_version < "3.0"'
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.12.0'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<4'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4; python_version < "3.0"'
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pyarrow
+    package_version: '>=0.11.1,<0.15.0; python_version >= "3.0" or platform_system
+      != "Windows"'
+  - package_name: pydot
+    package_version: '>=1.2.0,<2'
+  - package_name: pymongo
+    package_version: '>=3.8.0,<4.0.0'
+  - package_name: pytz
+    package_version: '>=2018.3'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0; python_version < "3.0"'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.14.0
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
+  - package_name: avro-python3
+    package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
+  - package_name: cachetools
+    package_version: '>=3.1.0,<4'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.9,<0.2.10'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.2.0,<4.0.0; python_version < "3.0"'
+  - package_name: google-apitools
+    package_version: '>=0.5.28,<0.5.29'
+  - package_name: google-cloud-bigquery
+    package_version: '>=1.6.0,<1.7.0'
+  - package_name: google-cloud-bigtable
+    package_version: '>=0.31.1,<0.33.0'
+  - package_name: google-cloud-core
+    package_version: '>=0.28.1,<0.30.0'
+  - package_name: google-cloud-datastore
+    package_version: '>=1.7.1,<1.8.0'
+  - package_name: google-cloud-pubsub
+    package_version: '>=0.39.0,<0.40.0'
+  - package_name: googledatastore
+    package_version: '>=7.0.1,<7.1; python_version < "3.0"'
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.12.0'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<4'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4; python_version < "3.0"'
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pyarrow
+    package_version: '>=0.11.1,<0.14.0; python_version >= "3.0" or platform_system
+      != "Windows"'
+  - package_name: pydot
+    package_version: '>=1.2.0,<1.3'
+  - package_name: pytz
+    package_version: '>=2018.3'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0; python_version < "3.0"'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.13.0
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
+  - package_name: avro-python3
+    package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.9,<0.2.10'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.2.0,<4.0.0; python_version < "3.0"'
+  - package_name: google-apitools
+    package_version: '>=0.5.26,<0.5.27'
+  - package_name: google-cloud-bigquery
+    package_version: '>=1.6.0,<1.7.0'
+  - package_name: google-cloud-bigtable
+    package_version: ==0.31.1
+  - package_name: google-cloud-core
+    package_version: ==0.28.1
+  - package_name: google-cloud-pubsub
+    package_version: ==0.39.0
+  - package_name: googledatastore
+    package_version: '>=7.0.1,<7.1; python_version < "3.0"'
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.11.3'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<4'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4'
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pyarrow
+    package_version: '>=0.11.1,<0.12.0; python_version >= "3.0" or platform_system
+      != "Windows"'
+  - package_name: pydot
+    package_version: '>=1.2.0,<1.3'
+  - package_name: pytz
+    package_version: '>=2018.3'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0; python_version < "3.0"'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.12.0
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
+  - package_name: avro-python3
+    package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.9,<0.2.10'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.2.0,<4.0.0; python_version < "3.0"'
+  - package_name: google-apitools
+    package_version: '>=0.5.26,<0.5.27'
+  - package_name: google-cloud-bigquery
+    package_version: '>=1.6.0,<1.7.0'
+  - package_name: google-cloud-bigtable
+    package_version: ==0.31.1
+  - package_name: google-cloud-core
+    package_version: ==0.28.1
+  - package_name: google-cloud-pubsub
+    package_version: ==0.39.0
+  - package_name: googledatastore
+    package_version: '>=7.0.1,<7.1; python_version < "3.0"'
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.11.3'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<4'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4'
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pyarrow
+    package_version: '>=0.11.1,<0.12.0; python_version >= "3.0" or platform_system
+      != "Windows"'
+  - package_name: pydot
+    package_version: '>=1.2.0,<1.3'
+  - package_name: pytz
+    package_version: '>=2018.3'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0; python_version < "3.0"'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.11.0
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
+  - package_name: avro-python3
+    package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.9,<0.2.10'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.1.1,<4.0.0'
+  - package_name: google-apitools
+    package_version: '>=0.5.23,<=0.5.24'
+  - package_name: google-cloud-bigquery
+    package_version: '>=1.6.0,<1.7.0'
+  - package_name: google-cloud-pubsub
+    package_version: ==0.39.0
+  - package_name: googledatastore
+    package_version: '>=7.0.1,<7.1; python_version < "3.0"'
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.11.3'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<4'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4'
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pyarrow
+    package_version: '>=0.11.1,<0.12.0; python_version >= "3.0" or platform_system
+      != "Windows"'
+  - package_name: pydot
+    package_version: '>=1.2.0,<1.3'
+  - package_name: pytz
+    package_version: '>=2018.3'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.10.0
+- dependencies:
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.6,<=0.2.8.2'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.1.1,<4.0.0'
+  - package_name: google-apitools
+    package_version: '>=0.5.23,<=0.5.24'
+  - package_name: google-cloud-bigquery
+    package_version: '>=1.6.0,<1.7.0'
+  - package_name: google-cloud-pubsub
+    package_version: ==0.35.4
+  - package_name: googledatastore
+    package_version: '>=7.0.1,<7.1; python_version < "3.0"'
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.11.3'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<4'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4'
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pydot
+    package_version: '>=1.2.0,<1.3'
+  - package_name: pytz
+    package_version: '>=2018.3,<=2018.4'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.9.0
+- dependencies:
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.6,<=0.2.8.2'
+  - package_name: fastavro
+    package_version: '>=0.21.4,<0.22'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.1.1,<4.0.0'
+  - package_name: google-apitools
+    package_version: '>=0.5.18,<=0.5.20'
+  - package_name: google-cloud-bigquery
+    package_version: ==0.25.0
+  - package_name: google-cloud-pubsub
+    package_version: ==0.26.0
+  - package_name: googledatastore
+    package_version: ==7.0.1; python_version < "3.0"
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.11.3'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<5'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4'
+  - package_name: proto-google-cloud-pubsub-v1
+    package_version: ==0.15.4
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pydot
+    package_version: '>=1.2.0,<1.3'
+  - package_name: pytz
+    package_version: '>=2018.3,<=2018.4'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0; python_version < "3.5.0"'
+  sdk_version_number: 2.8.0
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.6,<=0.2.8.2'
+  - package_name: fastavro
+    package_version: ==0.19.7
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.1.1,<4.0.0'
+  - package_name: google-apitools
+    package_version: '>=0.5.18,<=0.5.20'
+  - package_name: google-cloud-bigquery
+    package_version: ==0.25.0
+  - package_name: google-cloud-pubsub
+    package_version: ==0.26.0
+  - package_name: googledatastore
+    package_version: ==7.0.1
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.11.3'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<5'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4'
+  - package_name: proto-google-cloud-pubsub-v1
+    package_version: ==0.15.4
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pydot
+    package_version: '>=1.2.0,<1.3'
+  - package_name: pytz
+    package_version: '>=2018.3,<=2018.4'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: six
+    package_version: '>=1.9,<1.12'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0'
+  sdk_version_number: 2.7.0
+- dependencies:
+  - package_name: avro
+    package_version: '>=1.8.1,<2.0.0'
+  - package_name: crcmod
+    package_version: '>=1.7,<2.0'
+  - package_name: dill
+    package_version: '>=0.2.6,<=0.2.8.2'
+  - package_name: future
+    package_version: '>=0.16.0,<1.0.0'
+  - package_name: futures
+    package_version: '>=3.1.1,<4.0.0'
+  - package_name: google-apitools
+    package_version: '>=0.5.18,<=0.5.20'
+  - package_name: google-cloud-bigquery
+    package_version: ==0.25.0
+  - package_name: google-cloud-pubsub
+    package_version: ==0.26.0
+  - package_name: googledatastore
+    package_version: ==7.0.1
+  - package_name: grpcio
+    package_version: '>=1.8,<2'
+  - package_name: hdfs
+    package_version: '>=2.1.0,<3.0.0'
+  - package_name: httplib2
+    package_version: '>=0.8,<=0.11.3'
+  - package_name: mock
+    package_version: '>=1.0.1,<3.0.0'
+  - package_name: oauth2client
+    package_version: '>=2.0.1,<5'
+  - package_name: proto-google-cloud-datastore-v1
+    package_version: '>=0.90.0,<=0.90.4'
+  - package_name: proto-google-cloud-pubsub-v1
+    package_version: ==0.15.4
+  - package_name: protobuf
+    package_version: '>=3.5.0.post1,<4'
+  - package_name: pydot
+    package_version: '>=1.2.0,<1.3'
+  - package_name: pytz
+    package_version: '>=2018.3,<=2018.4'
+  - package_name: pyvcf
+    package_version: '>=0.6.8,<0.7.0'
+  - package_name: pyyaml
+    package_version: '>=3.12,<4.0.0'
+  - package_name: six
+    package_version: '>=1.9,<1.12'
+  - package_name: typing
+    package_version: '>=3.6.0,<3.7.0'
+  sdk_version_number: 2.6.0
