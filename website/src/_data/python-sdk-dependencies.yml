@@ -10,8 +10,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-sdk_version:
+sdk_versions:
   - sdk_version_number: 2.17.0
+    dependencies:
+      - package_name: avro-python3
+        package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
+      - package_name: avro
+        package_version: '>=1.8.1,<2.0.0; python_version < "3.0"'
+      - package_name: cachetools
+        package_version: '>=3.1.0,<4'
+  - sdk_version_number: 2.16.0
     dependencies:
       - package_name: avro-python3
         package_version: '>=1.8.1,<2.0.0; python_version >= "3.0"'
