@@ -29,6 +29,7 @@ the listed versions that will be in scope during execution.
 <p>To see the compile and runtime dependencies for your Beam SDK version, expand
 the relevant section below.</p>
 
-{{% assign py-deps-data=site.data.python-sdk-dependencies %}}
+{% assign py-deps-data=site.data.python-sdk-dependencies %}
+{% assign latest-release = true %}
 
-{{% include python-sdk-dependencies.md %}}
+{% include python-sdk-dependencies.md %}
