@@ -22,6 +22,7 @@ PrecommitJobBuilder builder = new PrecommitJobBuilder(
     scope: this,
     nameBase: 'Python',
     gradleTask: ':pythonPreCommit',
+    timeoutMins: 180,
     triggerPathPatterns: [
       '^model/.*$',
       '^sdks/python/.*$',
@@ -43,6 +44,7 @@ PrecommitJobBuilder builderPytest = new PrecommitJobBuilder(
     nameBase: 'Python_pytest',
     gradleTask: ':pythonPreCommitPytest',
     commitTriggering: false,
+    timeoutMins: 180,
 )
 builderPytest.build {
   // Publish all test results to Jenkins.

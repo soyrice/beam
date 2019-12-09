@@ -24,7 +24,6 @@ import platform
 import unittest
 from builtins import object
 from builtins import range
-from collections import defaultdict
 
 import mock
 
@@ -40,9 +39,6 @@ from apache_beam.pipeline import PTransformOverride
 from apache_beam.pvalue import AsSingleton
 from apache_beam.pvalue import TaggedOutput
 from apache_beam.runners.dataflow.native_io.iobase import NativeSource
-from apache_beam.runners.direct.evaluation_context import _ExecutionContext
-from apache_beam.runners.direct.transform_evaluator import _GroupByKeyOnlyEvaluator
-from apache_beam.runners.direct.transform_evaluator import _TransformEvaluator
 from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that
 from apache_beam.testing.util import equal_to
@@ -57,6 +53,7 @@ from apache_beam.transforms import WindowInto
 from apache_beam.transforms.userstate import BagStateSpec
 from apache_beam.transforms.window import SlidingWindows
 from apache_beam.transforms.window import TimestampedValue
+from apache_beam.utils import windowed_value
 from apache_beam.utils.timestamp import MIN_TIMESTAMP
 
 # TODO(BEAM-1555): Test is failing on the service, with FakeSource.
@@ -256,7 +253,7 @@ class PipelineTest(unittest.TestCase):
 
   def test_visit_entire_graph(self):
     pipeline = Pipeline()
-    pcoll1 = pipeline | 'pcoll' >> Create([1, 2, 3])
+    pcoll1 = pipeline | 'pcoll' >> beam.Impulse()
     pcoll2 = pcoll1 | 'do1' >> FlatMap(lambda x: [x + 1])
     pcoll3 = pcoll2 | 'do2' >> FlatMap(lambda x: [x + 1])
     pcoll4 = pcoll2 | 'do3' >> FlatMap(lambda x: [x + 1])
@@ -269,9 +266,9 @@ class PipelineTest(unittest.TestCase):
                      set(visitor.visited))
     self.assertEqual(set(visitor.enter_composite),
                      set(visitor.leave_composite))
-    self.assertEqual(3, len(visitor.enter_composite))
-    self.assertEqual(visitor.enter_composite[2].transform, transform)
-    self.assertEqual(visitor.leave_composite[1].transform, transform)
+    self.assertEqual(2, len(visitor.enter_composite))
+    self.assertEqual(visitor.enter_composite[1].transform, transform)
+    self.assertEqual(visitor.leave_composite[0].transform, transform)
 
   def test_apply_custom_transform(self):
     pipeline = TestPipeline()
@@ -682,6 +679,23 @@ class DoFnTest(unittest.TestCase):
           p | Create([1, 2]) | beam.Map(lambda _, t=DoFn.TimestampParam: t),
           equal_to([MIN_TIMESTAMP, MIN_TIMESTAMP]))
 
+  def test_pane_info_param(self):
+    with TestPipeline() as p:
+      pc = p | Create([(None, None)])
+      assert_that(
+          pc | beam.Map(lambda _, p=DoFn.PaneInfoParam: p),
+          equal_to([windowed_value.PANE_INFO_UNKNOWN]),
+          label='CheckUngrouped')
+      assert_that(
+          pc | beam.GroupByKey() | beam.Map(lambda _, p=DoFn.PaneInfoParam: p),
+          equal_to([windowed_value.PaneInfo(
+              is_first=True,
+              is_last=True,
+              timing=windowed_value.PaneInfoTiming.ON_TIME,
+              index=0,
+              nonspeculative_index=0)]),
+          label='CheckGrouped')
+
   def test_incomparable_default(self):
 
     class IncomparableType(object):
@@ -792,85 +806,6 @@ class RunnerApiTest(unittest.TestCase):
     self.assertIsNotNone(p.transforms_stack[0].parts[0].parent)
     self.assertEqual(p.transforms_stack[0].parts[0].parent,
                      p.transforms_stack[0])
-
-
-class DirectRunnerRetryTests(unittest.TestCase):
-
-  def test_retry_fork_graph(self):
-    # TODO(BEAM-3642): The FnApiRunner currently does not currently support
-    # retries.
-    p = beam.Pipeline(runner='BundleBasedDirectRunner')
-
-    # TODO(mariagh): Remove the use of globals from the test.
-    global count_b, count_c # pylint: disable=global-variable-undefined
-    count_b, count_c = 0, 0
-
-    def f_b(x):
-      global count_b  # pylint: disable=global-variable-undefined
-      count_b += 1
-      raise Exception('exception in f_b')
-
-    def f_c(x):
-      global count_c  # pylint: disable=global-variable-undefined
-      count_c += 1
-      raise Exception('exception in f_c')
-
-    names = p | 'CreateNodeA' >> beam.Create(['Ann', 'Joe'])
-
-    fork_b = names | 'SendToB' >> beam.Map(f_b) # pylint: disable=unused-variable
-    fork_c = names | 'SendToC' >> beam.Map(f_c) # pylint: disable=unused-variable
-
-    with self.assertRaises(Exception):
-      p.run().wait_until_finish()
-    assert count_b == count_c == 4
-
-  def test_no_partial_writeouts(self):
-
-    class TestTransformEvaluator(_TransformEvaluator):
-
-      def __init__(self):
-        self._execution_context = _ExecutionContext(None, {})
-
-      def start_bundle(self):
-        self.step_context = self._execution_context.get_step_context()
-
-      def process_element(self, element):
-        k, v = element
-        state = self.step_context.get_keyed_state(k)
-        state.add_state(None, _GroupByKeyOnlyEvaluator.ELEMENTS_TAG, v)
-
-    # Create instance and add key/value, key/value2
-    evaluator = TestTransformEvaluator()
-    evaluator.start_bundle()
-    self.assertIsNone(evaluator.step_context.existing_keyed_state.get('key'))
-    self.assertIsNone(evaluator.step_context.partial_keyed_state.get('key'))
-
-    evaluator.process_element(['key', 'value'])
-    self.assertEqual(
-        evaluator.step_context.existing_keyed_state['key'].state,
-        defaultdict(lambda: defaultdict(list)))
-    self.assertEqual(
-        evaluator.step_context.partial_keyed_state['key'].state,
-        {None: {'elements':['value']}})
-
-    evaluator.process_element(['key', 'value2'])
-    self.assertEqual(
-        evaluator.step_context.existing_keyed_state['key'].state,
-        defaultdict(lambda: defaultdict(list)))
-    self.assertEqual(
-        evaluator.step_context.partial_keyed_state['key'].state,
-        {None: {'elements':['value', 'value2']}})
-
-    # Simulate an exception (redo key/value)
-    evaluator._execution_context.reset()
-    evaluator.start_bundle()
-    evaluator.process_element(['key', 'value'])
-    self.assertEqual(
-        evaluator.step_context.existing_keyed_state['key'].state,
-        defaultdict(lambda: defaultdict(list)))
-    self.assertEqual(
-        evaluator.step_context.partial_keyed_state['key'].state,
-        {None: {'elements':['value']}})
 
 
 if __name__ == '__main__':

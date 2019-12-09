@@ -32,6 +32,7 @@ from builtins import next
 from builtins import object
 
 from future.utils import itervalues
+from google.protobuf import duration_pb2
 from google.protobuf import timestamp_pb2
 
 import apache_beam as beam
@@ -68,6 +69,8 @@ OLD_DATAFLOW_RUNNER_HARNESS_PARDO_URN = 'beam:dofn:javasdk:0.1'
 OLD_DATAFLOW_RUNNER_HARNESS_READ_URN = 'beam:source:java:0.1'
 URNS_NEEDING_PCOLLECTIONS = set([monitoring_infos.ELEMENT_COUNT_URN,
                                  monitoring_infos.SAMPLED_BYTE_SIZE_URN])
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class RunnerIOOperation(operations.Operation):
@@ -235,20 +238,25 @@ class StateBackedSideInputMap(object):
   def __getitem__(self, window):
     target_window = self._side_input_data.window_mapping_fn(window)
     if target_window not in self._cache:
-      state_key = beam_fn_api_pb2.StateKey(
-          multimap_side_input=beam_fn_api_pb2.StateKey.MultimapSideInput(
-              transform_id=self._transform_id,
-              side_input_id=self._tag,
-              window=self._target_window_coder.encode(target_window),
-              key=b''))
       state_handler = self._state_handler
       access_pattern = self._side_input_data.access_pattern
 
       if access_pattern == common_urns.side_inputs.ITERABLE.urn:
+        state_key = beam_fn_api_pb2.StateKey(
+            iterable_side_input=beam_fn_api_pb2.StateKey.IterableSideInput(
+                transform_id=self._transform_id,
+                side_input_id=self._tag,
+                window=self._target_window_coder.encode(target_window)))
         raw_view = _StateBackedIterable(
             state_handler, state_key, self._element_coder)
 
       elif access_pattern == common_urns.side_inputs.MULTIMAP.urn:
+        state_key = beam_fn_api_pb2.StateKey(
+            multimap_side_input=beam_fn_api_pb2.StateKey.MultimapSideInput(
+                transform_id=self._transform_id,
+                side_input_id=self._tag,
+                window=self._target_window_coder.encode(target_window),
+                key=b''))
         cache = {}
         key_coder_impl = self._element_coder.key_coder().get_impl()
         value_coder = self._element_coder.value_coder()
@@ -649,7 +657,7 @@ class BundleProcessor(object):
       self.state_sampler.start()
       # Start all operations.
       for op in reversed(self.ops.values()):
-        logging.debug('start %s', op)
+        _LOGGER.debug('start %s', op)
         op.execution_context = execution_context
         op.start()
 
@@ -668,7 +676,7 @@ class BundleProcessor(object):
 
       # Finish all operations.
       for op in self.ops.values():
-        logging.debug('finish %s', op)
+        _LOGGER.debug('finish %s', op)
         op.finish()
 
       return ([self.delayed_bundle_application(op, residual)
@@ -704,8 +712,7 @@ class BundleProcessor(object):
               ) = split
               if element_primary:
                 split_response.primary_roots.add().CopyFrom(
-                    self.delayed_bundle_application(
-                        *element_primary).application)
+                    self.bundle_application(*element_primary))
               if element_residual:
                 split_response.residual_roots.add().CopyFrom(
                     self.delayed_bundle_application(*element_residual))
@@ -718,22 +725,39 @@ class BundleProcessor(object):
     return split_response
 
   def delayed_bundle_application(self, op, deferred_remainder):
-    transform_id, main_input_tag, main_input_coder, outputs = op.input_info
     # TODO(SDF): For non-root nodes, need main_input_coder + residual_coder.
-    element_and_restriction, watermark = deferred_remainder
-    if watermark:
-      proto_watermark = timestamp_pb2.Timestamp()
-      proto_watermark.FromMicroseconds(watermark.micros)
-      output_watermarks = {output: proto_watermark for output in outputs}
+    ((element_and_restriction, output_watermark),
+     deferred_watermark) = deferred_remainder
+    if deferred_watermark:
+      assert isinstance(deferred_watermark, timestamp.Duration)
+      proto_deferred_watermark = duration_pb2.Duration()
+      proto_deferred_watermark.FromMicroseconds(deferred_watermark.micros)
+    else:
+      proto_deferred_watermark = None
+    return beam_fn_api_pb2.DelayedBundleApplication(
+        requested_time_delay=proto_deferred_watermark,
+        application=self.construct_bundle_application(
+            op, output_watermark, element_and_restriction))
+
+  def bundle_application(self, op, primary):
+    ((element_and_restriction, output_watermark),
+     _) = primary
+    return self.construct_bundle_application(
+        op, output_watermark, element_and_restriction)
+
+  def construct_bundle_application(self, op, output_watermark, element):
+    transform_id, main_input_tag, main_input_coder, outputs = op.input_info
+    if output_watermark:
+      proto_output_watermark = timestamp_pb2.Timestamp()
+      proto_output_watermark.FromMicroseconds(output_watermark.micros)
+      output_watermarks = {output: proto_output_watermark for output in outputs}
     else:
       output_watermarks = None
-    return beam_fn_api_pb2.DelayedBundleApplication(
-        application=beam_fn_api_pb2.BundleApplication(
-            transform_id=transform_id,
-            input_id=main_input_tag,
-            output_watermarks=output_watermarks,
-            element=main_input_coder.get_impl().encode_nested(
-                element_and_restriction)))
+    return beam_fn_api_pb2.BundleApplication(
+        transform_id=transform_id,
+        input_id=main_input_tag,
+        output_watermarks=output_watermarks,
+        element=main_input_coder.get_impl().encode_nested(element))
 
   def metrics(self):
     # DEPRECATED
@@ -863,7 +887,7 @@ class BeamTransformFactory(object):
   def create_operation(self, transform_id, consumers):
     transform_proto = self.descriptor.transforms[transform_id]
     if not transform_proto.unique_name:
-      logging.debug("No unique name set for transform %s" % transform_id)
+      _LOGGER.debug("No unique name set for transform %s" % transform_id)
       transform_proto.unique_name = transform_id
     creator, parameter_type = self._known_urns[transform_proto.spec.urn]
     payload = proto_utils.parse_Bytes(
@@ -948,13 +972,13 @@ def create(factory, transform_id, transform_proto, grpc_port, consumers):
   if grpc_port.coder_id:
     output_coder = factory.get_coder(grpc_port.coder_id)
   else:
-    logging.info(
+    _LOGGER.info(
         'Missing required coder_id on grpc_port for %s; '
         'using deprecated fallback.',
         transform_id)
     output_coder = factory.get_only_output_coder(transform_proto)
   return DataInputOperation(
-      transform_proto.unique_name,
+      common.NameContext(transform_proto.unique_name, transform_id),
       transform_proto.unique_name,
       consumers,
       factory.counter_factory,
@@ -970,13 +994,13 @@ def create(factory, transform_id, transform_proto, grpc_port, consumers):
   if grpc_port.coder_id:
     output_coder = factory.get_coder(grpc_port.coder_id)
   else:
-    logging.info(
+    _LOGGER.info(
         'Missing required coder_id on grpc_port for %s; '
         'using deprecated fallback.',
         transform_id)
     output_coder = factory.get_only_input_coder(transform_proto)
   return DataOutputOperation(
-      transform_proto.unique_name,
+      common.NameContext(transform_proto.unique_name, transform_id),
       transform_proto.unique_name,
       consumers,
       factory.counter_factory,
@@ -995,7 +1019,7 @@ def create(factory, transform_id, transform_proto, parameter, consumers):
       [factory.get_only_output_coder(transform_proto)])
   return factory.augment_oldstyle_op(
       operations.ReadOperation(
-          transform_proto.unique_name,
+          common.NameContext(transform_proto.unique_name, transform_id),
           spec,
           factory.counter_factory,
           factory.state_sampler),
@@ -1012,7 +1036,7 @@ def create(factory, transform_id, transform_proto, parameter, consumers):
       [WindowedValueCoder(source.default_output_coder())])
   return factory.augment_oldstyle_op(
       operations.ReadOperation(
-          transform_proto.unique_name,
+          common.NameContext(transform_proto.unique_name, transform_id),
           spec,
           factory.counter_factory,
           factory.state_sampler),
@@ -1024,7 +1048,7 @@ def create(factory, transform_id, transform_proto, parameter, consumers):
     python_urns.IMPULSE_READ_TRANSFORM, beam_runner_api_pb2.ReadPayload)
 def create(factory, transform_id, transform_proto, parameter, consumers):
   return operations.ImpulseReadOperation(
-      transform_proto.unique_name,
+      common.NameContext(transform_proto.unique_name, transform_id),
       factory.counter_factory,
       factory.state_sampler,
       consumers,
@@ -1203,7 +1227,7 @@ def _create_pardo_operation(
 
   result = factory.augment_oldstyle_op(
       operation_cls(
-          transform_proto.unique_name,
+          common.NameContext(transform_proto.unique_name, transform_id),
           spec,
           factory.counter_factory,
           factory.state_sampler,
@@ -1252,7 +1276,7 @@ def create(factory, transform_id, transform_proto, parameter, consumers):
 def create(factory, transform_id, transform_proto, unused_parameter, consumers):
   return factory.augment_oldstyle_op(
       operations.FlattenOperation(
-          transform_proto.unique_name,
+          common.NameContext(transform_proto.unique_name, transform_id),
           operation_specs.WorkerFlatten(
               None, [factory.get_only_output_coder(transform_proto)]),
           factory.counter_factory,
@@ -1270,7 +1294,7 @@ def create(factory, transform_id, transform_proto, payload, consumers):
        [], {}))
   return factory.augment_oldstyle_op(
       operations.PGBKCVOperation(
-          transform_proto.unique_name,
+          common.NameContext(transform_proto.unique_name, transform_id),
           operation_specs.WorkerPartialGroupByKey(
               serialized_combine_fn,
               None,
@@ -1286,7 +1310,7 @@ def create(factory, transform_id, transform_proto, payload, consumers):
     beam_runner_api_pb2.CombinePayload)
 def create(factory, transform_id, transform_proto, payload, consumers):
   return _create_combine_phase_operation(
-      factory, transform_proto, payload, consumers, 'merge')
+      factory, transform_id, transform_proto, payload, consumers, 'merge')
 
 
 @BeamTransformFactory.register_urn(
@@ -1294,7 +1318,7 @@ def create(factory, transform_id, transform_proto, payload, consumers):
     beam_runner_api_pb2.CombinePayload)
 def create(factory, transform_id, transform_proto, payload, consumers):
   return _create_combine_phase_operation(
-      factory, transform_proto, payload, consumers, 'extract')
+      factory, transform_id, transform_proto, payload, consumers, 'extract')
 
 
 @BeamTransformFactory.register_urn(
@@ -1302,17 +1326,17 @@ def create(factory, transform_id, transform_proto, payload, consumers):
     beam_runner_api_pb2.CombinePayload)
 def create(factory, transform_id, transform_proto, payload, consumers):
   return _create_combine_phase_operation(
-      factory, transform_proto, payload, consumers, 'all')
+      factory, transform_id, transform_proto, payload, consumers, 'all')
 
 
 def _create_combine_phase_operation(
-    factory, transform_proto, payload, consumers, phase):
+    factory, transform_id, transform_proto, payload, consumers, phase):
   serialized_combine_fn = pickler.dumps(
       (beam.CombineFn.from_runner_api(payload.combine_fn, factory.context),
        [], {}))
   return factory.augment_oldstyle_op(
       operations.CombineOperation(
-          transform_proto.unique_name,
+          common.NameContext(transform_proto.unique_name, transform_id),
           operation_specs.WorkerCombineFn(
               serialized_combine_fn,
               phase,
@@ -1328,7 +1352,7 @@ def _create_combine_phase_operation(
 def create(factory, transform_id, transform_proto, unused_parameter, consumers):
   return factory.augment_oldstyle_op(
       operations.FlattenOperation(
-          transform_proto.unique_name,
+          common.NameContext(transform_proto.unique_name, transform_id),
           operation_specs.WorkerFlatten(
               None,
               [factory.get_only_output_coder(transform_proto)]),

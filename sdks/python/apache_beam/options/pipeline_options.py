@@ -23,6 +23,7 @@ import argparse
 import json
 import logging
 import os
+import subprocess
 from builtins import list
 from builtins import object
 
@@ -45,6 +46,9 @@ __all__ = [
     'SetupOptions',
     'TestOptions',
     ]
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _static_value_provider_of(value_type):
@@ -261,7 +265,7 @@ class PipelineOptions(HasDisplayData):
       add_extra_args_fn(parser)
     known_args, unknown_args = parser.parse_known_args(self._flags)
     if unknown_args:
-      logging.warning("Discarding unparseable args: %s", unknown_args)
+      _LOGGER.warning("Discarding unparseable args: %s", unknown_args)
     result = vars(known_args)
 
     # Apply the overrides if any
@@ -461,7 +465,11 @@ class GoogleCloudOptions(PipelineOptions):
     parser.add_argument('--service_account_email',
                         default=None,
                         help='Identity to run virtual machines as.')
-    parser.add_argument('--no_auth', dest='no_auth', type=bool, default=False)
+    parser.add_argument('--no_auth',
+                        dest='no_auth',
+                        action='store_true',
+                        default=False,
+                        help='Skips authorizing credentials with Google Cloud.')
     # Option to run templated pipelines
     parser.add_argument('--template_location',
                         default=None,
@@ -509,19 +517,25 @@ class GoogleCloudOptions(PipelineOptions):
     """
     environment_region = os.environ.get('CLOUDSDK_COMPUTE_REGION')
     if environment_region:
-      logging.info('Using default GCP region %s from $CLOUDSDK_COMPUTE_REGION',
+      _LOGGER.info('Using default GCP region %s from $CLOUDSDK_COMPUTE_REGION',
                    environment_region)
       return environment_region
     try:
       cmd = ['gcloud', 'config', 'get-value', 'compute/region']
-      output = processes.check_output(cmd).decode('utf-8').strip()
-      if output:
-        logging.info('Using default GCP region %s from `%s`',
-                     output, ' '.join(cmd))
-        return output
+      # Use subprocess.DEVNULL in Python 3.3+.
+      if hasattr(subprocess, 'DEVNULL'):
+        DEVNULL = subprocess.DEVNULL
+      else:
+        DEVNULL = open(os.devnull, 'ab')
+      raw_output = processes.check_output(cmd, stderr=DEVNULL)
+      formatted_output = raw_output.decode('utf-8').strip()
+      if formatted_output:
+        _LOGGER.info('Using default GCP region %s from `%s`',
+                     formatted_output, ' '.join(cmd))
+        return formatted_output
     except RuntimeError:
       pass
-    logging.warning(
+    _LOGGER.warning(
         '--region not set; will default to us-central1. Future releases of '
         'Beam will require the user to set --region explicitly, or else have a '
         'default set via the gcloud tool. '
@@ -865,8 +879,13 @@ class PortableOptions(PipelineOptions):
   def _add_argparse_args(cls, parser):
     parser.add_argument(
         '--job_endpoint', default=None,
-        help=('Job service endpoint to use. Should be in the form of address '
-              'and port, e.g. localhost:3000'))
+        help=('Job service endpoint to use. Should be in the form of host '
+              'and port, e.g. localhost:8099.'))
+    parser.add_argument(
+        '--artifact_endpoint', default=None,
+        help=('Artifact staging endpoint to use. Should be in the form of host '
+              'and port, e.g. localhost:8098. If none is specified, the '
+              'artifact endpoint sent from the job server is used.'))
     parser.add_argument(
         '--job-server-timeout', default=60, type=int,
         help=('Job service request timeout in seconds. The timeout '
@@ -902,6 +921,55 @@ class PortableOptions(PipelineOptions):
         '--output_executable_path', default=None,
         help=('Create an executable jar at this path rather than running '
               'the pipeline.'))
+
+
+class JobServerOptions(PipelineOptions):
+  """Options for starting a Beam job server. Roughly corresponds to
+  JobServerDriver.ServerConfiguration in Java.
+  """
+  @classmethod
+  def _add_argparse_args(cls, parser):
+    parser.add_argument('--artifacts_dir', default=None,
+                        help='The location to store staged artifact files. '
+                             'Any Beam-supported file system is allowed. '
+                             'If unset, the local temp dir will be used.')
+    parser.add_argument('--job_port', default=0,
+                        help='Port to use for the job service. 0 to use a '
+                             'dynamic port.')
+    parser.add_argument('--artifact_port', default=0,
+                        help='Port to use for artifact staging. 0 to use a '
+                             'dynamic port.')
+    parser.add_argument('--expansion_port', default=0,
+                        help='Port to use for artifact staging. 0 to use a '
+                             'dynamic port.')
+
+
+class FlinkRunnerOptions(PipelineOptions):
+
+  PUBLISHED_FLINK_VERSIONS = ['1.7', '1.8', '1.9']
+
+  @classmethod
+  def _add_argparse_args(cls, parser):
+    parser.add_argument('--flink_master',
+                        default='[auto]',
+                        help='Flink master address (http://host:port)'
+                             ' Use "[local]" to start a local cluster'
+                             ' for the execution. Use "[auto]" if you'
+                             ' plan to either execute locally or let the'
+                             ' Flink job server infer the cluster address.')
+    parser.add_argument('--flink_version',
+                        default=cls.PUBLISHED_FLINK_VERSIONS[-1],
+                        choices=cls.PUBLISHED_FLINK_VERSIONS,
+                        help='Flink version to use.')
+    parser.add_argument('--flink_job_server_jar',
+                        help='Path or URL to a flink jobserver jar.')
+    parser.add_argument('--flink_submit_uber_jar',
+                        default=False,
+                        action='store_true',
+                        help='Create and upload an uberjar to the flink master'
+                             ' directly, rather than starting up a job server.'
+                             ' Only applies when flink_master is set to a'
+                             ' cluster address.  Requires Python 3.6+.')
 
 
 class TestOptions(PipelineOptions):

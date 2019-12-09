@@ -106,8 +106,9 @@ REQUIRED_PACKAGES = [
     'avro>=1.8.1,<2.0.0; python_version < "3.0"',
     'avro-python3>=1.8.1,<2.0.0; python_version >= "3.0"',
     'crcmod>=1.7,<2.0',
-    # Dill doesn't guarantee comatibility between releases within minor version.
-    'dill>=0.3.0,<0.3.1',
+    # Dill doesn't guarantee compatibility between releases within minor version.
+    # See: https://github.com/uqfoundation/dill/issues/341.
+    'dill>=0.3.1.1,<0.3.2',
     'fastavro>=0.21.4,<0.22',
     'funcsigs>=1.0.2,<2; python_version < "3.0"',
     'future>=0.16.0,<1.0.0',
@@ -116,6 +117,7 @@ REQUIRED_PACKAGES = [
     'hdfs>=2.1.0,<3.0.0',
     'httplib2>=0.8,<=0.12.0',
     'mock>=1.0.1,<3.0.0',
+    'numpy>=1.14.3,<2',
     'pymongo>=3.8.0,<4.0.0',
     'oauth2client>=2.0.1,<4',
     'protobuf>=3.5.0.post1,<4',
@@ -139,7 +141,6 @@ if sys.platform == 'win32' and sys.maxsize <= 2**32:
 REQUIRED_TEST_PACKAGES = [
     'nose>=1.3.7',
     'nose_xunitmp>=0.4.1',
-    'numpy>=1.14.3,<2',
     'pandas>=0.23.4,<0.25',
     'parameterized>=0.6.0,<0.7.0',
     'pyhamcrest>=1.9,<2.0',
@@ -213,6 +214,7 @@ setuptools.setup(
     ext_modules=cythonize([
         'apache_beam/**/*.pyx',
         'apache_beam/coders/coder_impl.py',
+        'apache_beam/metrics/cells.py',
         'apache_beam/metrics/execution.py',
         'apache_beam/runners/common.py',
         'apache_beam/runners/worker/logger.py',
@@ -225,8 +227,7 @@ setuptools.setup(
     install_requires=REQUIRED_PACKAGES,
     python_requires=python_requires,
     test_suite='nose.collector',
-    setup_requires=['pytest_runner'],
-    tests_require=REQUIRED_TEST_PACKAGES,
+    # BEAM-8840: Do NOT use tests_require or setup_requires.
     extras_require={
         'docs': ['Sphinx>=1.5.2,<2.0'],
         'test': REQUIRED_TEST_PACKAGES,

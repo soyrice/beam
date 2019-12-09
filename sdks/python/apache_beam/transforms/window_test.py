@@ -23,6 +23,7 @@ import unittest
 from builtins import range
 
 import apache_beam as beam
+from apache_beam.coders import coders
 from apache_beam.runners import pipeline_context
 from apache_beam.testing.test_pipeline import TestPipeline
 from apache_beam.testing.util import assert_that
@@ -43,6 +44,7 @@ from apache_beam.transforms.window import FixedWindows
 from apache_beam.transforms.window import GlobalWindow
 from apache_beam.transforms.window import GlobalWindows
 from apache_beam.transforms.window import IntervalWindow
+from apache_beam.transforms.window import NonMergingWindowFn
 from apache_beam.transforms.window import Sessions
 from apache_beam.transforms.window import SlidingWindows
 from apache_beam.transforms.window import TimestampCombiner
@@ -64,6 +66,23 @@ class ReifyWindowsFn(core.DoFn):
 
 
 reify_windows = core.ParDo(ReifyWindowsFn())
+
+class TestCustomWindows(NonMergingWindowFn):
+  """A custom non merging window fn which assigns elements into interval windows
+  [0, 3), [3, 5) and [5, element timestamp) based on the element timestamps.
+  """
+
+  def assign(self, context):
+    timestamp = context.timestamp
+    if timestamp < 3:
+      return [IntervalWindow(0, 3)]
+    elif timestamp < 5:
+      return [IntervalWindow(3, 5)]
+    else:
+      return [IntervalWindow(5, timestamp)]
+
+  def get_window_coder(self):
+    return coders.IntervalWindowCoder()
 
 
 class WindowTest(unittest.TestCase):
@@ -177,6 +196,7 @@ class WindowTest(unittest.TestCase):
       result = (pcoll
                 | 'w' >> WindowInto(SlidingWindows(period=2, size=4))
                 | GroupByKey()
+                | beam.MapTuple(lambda k, vs: (k, sorted(vs)))
                 | reify_windows)
       expected = [('key @ [-2.0, 2.0)', [1]),
                   ('key @ [0.0, 4.0)', [1, 2, 3]),
@@ -203,7 +223,8 @@ class WindowTest(unittest.TestCase):
                 | Map(lambda x_t: TimestampedValue(x_t[0], x_t[1]))
                 | 'w' >> WindowInto(FixedWindows(5))
                 | Map(lambda v: ('key', v))
-                | GroupByKey())
+                | GroupByKey()
+                | beam.MapTuple(lambda k, vs: (k, sorted(vs))))
       assert_that(result, equal_to([('key', [0, 1, 2, 3, 4]),
                                     ('key', [5, 6, 7, 8, 9])]))
 
@@ -218,7 +239,8 @@ class WindowTest(unittest.TestCase):
                 | 'rewindow' >> WindowInto(FixedWindows(5))
                 | 'rewindow2' >> WindowInto(FixedWindows(5))
                 | Map(lambda v: ('key', v))
-                | GroupByKey())
+                | GroupByKey()
+                | beam.MapTuple(lambda k, vs: (k, sorted(vs))))
       assert_that(result, equal_to([('key', sorted([0, 1, 2, 3, 4] * 3)),
                                     ('key', sorted([5, 6, 7, 8, 9] * 3))]))
 
@@ -281,6 +303,46 @@ class WindowTest(unittest.TestCase):
       assert_that(mean_per_window, equal_to([(0, 2.0), (1, 7.0)]),
                   label='assert:mean')
 
+  def test_custom_windows(self):
+    with TestPipeline() as p:
+      pcoll = self.timestamped_key_values(p, 'key', 0, 1, 2, 3, 4, 5, 6)
+      # pylint: disable=abstract-class-instantiated
+      result = (pcoll
+                | 'custom window' >> WindowInto(TestCustomWindows())
+                | GroupByKey()
+                | 'sort values' >> MapTuple(lambda k, vs: (k, sorted(vs))))
+      assert_that(result, equal_to([('key', [0, 1, 2]),
+                                    ('key', [3, 4]),
+                                    ('key', [5]),
+                                    ('key', [6])]))
+
+  def test_window_assignment_idempotency(self):
+    with TestPipeline() as p:
+      pcoll = self.timestamped_key_values(p, 'key', 0, 2, 4)
+      result = (pcoll
+                | 'window' >> WindowInto(FixedWindows(2))
+                | 'same window' >> WindowInto(FixedWindows(2))
+                | 'same window again' >> WindowInto(FixedWindows(2))
+                | GroupByKey())
+
+      assert_that(result, equal_to([('key', [0]),
+                                    ('key', [2]),
+                                    ('key', [4])]))
+
+  def test_window_assignment_through_multiple_gbk_idempotency(self):
+    with TestPipeline() as p:
+      pcoll = self.timestamped_key_values(p, 'key', 0, 2, 4)
+      result = (pcoll
+                | 'window' >> WindowInto(FixedWindows(2))
+                | 'gbk' >> GroupByKey()
+                | 'same window' >> WindowInto(FixedWindows(2))
+                | 'another gbk' >> GroupByKey()
+                | 'same window again' >> WindowInto(FixedWindows(2))
+                | 'gbk again' >> GroupByKey())
+
+      assert_that(result, equal_to([('key', [[[0]]]),
+                                    ('key', [[[2]]]),
+                                    ('key', [[[4]]])]))
 
 class RunnerApiTest(unittest.TestCase):
 

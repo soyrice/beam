@@ -25,10 +25,13 @@ from __future__ import division
 
 import datetime
 import functools
+import time
 from builtins import object
 
 import dateutil.parser
 import pytz
+from google.protobuf import duration_pb2
+from google.protobuf import timestamp_pb2
 from past.builtins import long
 
 from apache_beam.portability import common_urns
@@ -74,6 +77,10 @@ class Timestamp(object):
     if isinstance(seconds, Timestamp):
       return seconds
     return Timestamp(seconds)
+
+  @staticmethod
+  def now():
+    return Timestamp(seconds=time.time())
 
   @staticmethod
   def _epoch_datetime_utc():
@@ -135,6 +142,32 @@ class Timestamp(object):
     # Append 'Z' for UTC timezone.
     return self.to_utc_datetime().isoformat() + 'Z'
 
+  def to_proto(self):
+    """Returns the `google.protobuf.timestamp_pb2` representation."""
+    secs = self.micros // 1000000
+    nanos = (self.micros % 1000000) * 1000
+    return timestamp_pb2.Timestamp(seconds=secs, nanos=nanos)
+
+  @staticmethod
+  def from_proto(timestamp_proto):
+    """Creates a Timestamp from a `google.protobuf.timestamp_pb2`.
+
+    Note that the google has a sub-second resolution of nanoseconds whereas this
+    class has a resolution of microsends. This class will truncate the
+    nanosecond resolution down to the microsecond.
+    """
+
+    if timestamp_proto.nanos % 1000 != 0:
+      # TODO(BEAM-8738): Better define timestamps.
+      raise ValueError("Cannot convert from nanoseconds to microseconds " +
+                       "because this loses precision. Please make sure that " +
+                       "this is the correct behavior you want and manually " +
+                       "truncate the precision to the nearest microseconds. " +
+                       "See [BEAM-8738] for more information.")
+
+    return Timestamp(seconds=timestamp_proto.seconds,
+                     micros=timestamp_proto.nanos // 1000)
+
   def __float__(self):
     # Note that the returned value may have lost precision.
     return self.micros / 1000000
@@ -173,6 +206,8 @@ class Timestamp(object):
     return self + other
 
   def __sub__(self, other):
+    if isinstance(other, Timestamp):
+      return Duration(micros=self.micros - other.micros)
     other = Duration.of(other)
     return Timestamp(micros=self.micros - other.micros)
 
@@ -220,6 +255,32 @@ class Duration(object):
     if isinstance(seconds, Duration):
       return seconds
     return Duration(seconds)
+
+  def to_proto(self):
+    """Returns the `google.protobuf.duration_pb2` representation."""
+    secs = self.micros // 1000000
+    nanos = (self.micros % 1000000) * 1000
+    return duration_pb2.Duration(seconds=secs, nanos=nanos)
+
+  @staticmethod
+  def from_proto(duration_proto):
+    """Creates a Duration from a `google.protobuf.duration_pb2`.
+
+    Note that the google has a sub-second resolution of nanoseconds whereas this
+    class has a resolution of microsends. This class will truncate the
+    nanosecond resolution down to the microsecond.
+    """
+
+    if duration_proto.nanos % 1000 != 0:
+      # TODO(BEAM-8738): Better define durations.
+      raise ValueError("Cannot convert from nanoseconds to microseconds " +
+                       "because this loses precision. Please make sure that " +
+                       "this is the correct behavior you want and manually " +
+                       "truncate the precision to the nearest microseconds. " +
+                       "See [BEAM-8738] for more information.")
+
+    return Duration(seconds=duration_proto.seconds,
+                    micros=duration_proto.nanos // 1000)
 
   def __repr__(self):
     micros = self.micros

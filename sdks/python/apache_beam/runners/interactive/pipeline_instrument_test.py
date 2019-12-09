@@ -44,10 +44,8 @@ class PipelineInstrumentTest(unittest.TestCase):
   def setUp(self):
     ie.new_env(cache_manager=cache.FileBasedCacheManager())
 
-  def assertPipelineEqual(self, actual_pipeline, expected_pipeline):
-    actual_pipeline_proto = actual_pipeline.to_runner_api(use_fake_coders=True)
-    expected_pipeline_proto = expected_pipeline.to_runner_api(
-        use_fake_coders=True)
+  def assertPipelineProtoEqual(self, actual_pipeline_proto,
+                               expected_pipeline_proto):
     components1 = actual_pipeline_proto.components
     components2 = expected_pipeline_proto.components
     self.assertEqual(len(components1.transforms), len(components2.transforms))
@@ -63,6 +61,13 @@ class PipelineInstrumentTest(unittest.TestCase):
                               actual_pipeline_proto.root_transform_ids[0],
                               expected_pipeline_proto,
                               expected_pipeline_proto.root_transform_ids[0])
+
+  def assertPipelineEqual(self, actual_pipeline, expected_pipeline):
+    actual_pipeline_proto = actual_pipeline.to_runner_api(use_fake_coders=True)
+    expected_pipeline_proto = expected_pipeline.to_runner_api(
+        use_fake_coders=True)
+    self.assertPipelineProtoEqual(actual_pipeline_proto,
+                                  expected_pipeline_proto)
 
   def assertTransformEqual(self, actual_pipeline_proto, actual_transform_id,
                            expected_pipeline_proto, expected_transform_id):
@@ -83,7 +88,7 @@ class PipelineInstrumentTest(unittest.TestCase):
   def test_pcolls_to_pcoll_id(self):
     p = beam.Pipeline(interactive_runner.InteractiveRunner())
     # pylint: disable=range-builtin-not-iterating
-    init_pcoll = p | 'Init Create' >> beam.Create(range(10))
+    init_pcoll = p | 'Init Create' >> beam.Impulse()
     _, ctx = p.to_runner_api(use_fake_coders=True, return_context=True)
     self.assertEqual(instr.pcolls_to_pcoll_id(p, ctx), {
         str(init_pcoll): 'ref_PCollection_PCollection_1'})
@@ -95,7 +100,7 @@ class PipelineInstrumentTest(unittest.TestCase):
     _, ctx = p.to_runner_api(use_fake_coders=True, return_context=True)
     self.assertEqual(
         instr.cacheable_key(init_pcoll, instr.pcolls_to_pcoll_id(p, ctx)),
-        str(id(init_pcoll)) + '_ref_PCollection_PCollection_1')
+        str(id(init_pcoll)) + '_ref_PCollection_PCollection_10')
 
   def test_cacheable_key_with_version_map(self):
     p = beam.Pipeline(interactive_runner.InteractiveRunner())
@@ -118,8 +123,8 @@ class PipelineInstrumentTest(unittest.TestCase):
     # init_pcoll_2 is supplied as long as the version map is given.
     self.assertEqual(
         instr.cacheable_key(init_pcoll_2, instr.pcolls_to_pcoll_id(p2, ctx), {
-            'ref_PCollection_PCollection_1': str(id(init_pcoll))}),
-        str(id(init_pcoll)) + '_ref_PCollection_PCollection_1')
+            'ref_PCollection_PCollection_10': str(id(init_pcoll))}),
+        str(id(init_pcoll)) + '_ref_PCollection_PCollection_10')
 
   def test_cache_key(self):
     p = beam.Pipeline(interactive_runner.InteractiveRunner())
@@ -132,13 +137,13 @@ class PipelineInstrumentTest(unittest.TestCase):
 
     pin = instr.pin(p)
     self.assertEqual(pin.cache_key(init_pcoll), 'init_pcoll_' + str(
-        id(init_pcoll)) + '_ref_PCollection_PCollection_1_' + str(id(
+        id(init_pcoll)) + '_ref_PCollection_PCollection_10_' + str(id(
             init_pcoll.producer)))
     self.assertEqual(pin.cache_key(squares), 'squares_' + str(
-        id(squares)) + '_ref_PCollection_PCollection_2_' + str(id(
+        id(squares)) + '_ref_PCollection_PCollection_11_' + str(id(
             squares.producer)))
     self.assertEqual(pin.cache_key(cubes), 'cubes_' + str(
-        id(cubes)) + '_ref_PCollection_PCollection_3_' + str(id(
+        id(cubes)) + '_ref_PCollection_PCollection_12_' + str(id(
             cubes.producer)))
 
   def test_cacheables(self):
@@ -154,21 +159,21 @@ class PipelineInstrumentTest(unittest.TestCase):
         pin._cacheable_key(init_pcoll): {
             'var': 'init_pcoll',
             'version': str(id(init_pcoll)),
-            'pcoll_id': 'ref_PCollection_PCollection_1',
+            'pcoll_id': 'ref_PCollection_PCollection_10',
             'producer_version': str(id(init_pcoll.producer)),
             'pcoll': init_pcoll
         },
         pin._cacheable_key(squares): {
             'var': 'squares',
             'version': str(id(squares)),
-            'pcoll_id': 'ref_PCollection_PCollection_2',
+            'pcoll_id': 'ref_PCollection_PCollection_11',
             'producer_version': str(id(squares.producer)),
             'pcoll': squares
         },
         pin._cacheable_key(cubes): {
             'var': 'cubes',
             'version': str(id(cubes)),
-            'pcoll_id': 'ref_PCollection_PCollection_3',
+            'pcoll_id': 'ref_PCollection_PCollection_12',
             'producer_version': str(id(cubes.producer)),
             'pcoll': cubes
         }
@@ -178,14 +183,48 @@ class PipelineInstrumentTest(unittest.TestCase):
     p = beam.Pipeline(interactive_runner.InteractiveRunner())
     _ = p | 'ReadUnboundedSource' >> beam.io.ReadFromPubSub(
         subscription='projects/fake-project/subscriptions/fake_sub')
-    self.assertTrue(instr.has_unbounded_source(p))
+    self.assertTrue(instr.has_unbounded_sources(p))
 
   def test_not_has_unbounded_source(self):
     p = beam.Pipeline(interactive_runner.InteractiveRunner())
     with tempfile.NamedTemporaryFile(delete=False) as f:
       f.write(b'test')
     _ = p | 'ReadBoundedSource' >> beam.io.ReadFromText(f.name)
-    self.assertFalse(instr.has_unbounded_source(p))
+    self.assertFalse(instr.has_unbounded_sources(p))
+
+  def test_background_caching_pipeline_proto(self):
+    p = beam.Pipeline(interactive_runner.InteractiveRunner())
+
+    # Test that the two ReadFromPubSub are correctly cut out.
+    a = p | 'ReadUnboundedSourceA' >> beam.io.ReadFromPubSub(
+        subscription='projects/fake-project/subscriptions/fake_sub')
+    b = p | 'ReadUnboundedSourceB' >> beam.io.ReadFromPubSub(
+        subscription='projects/fake-project/subscriptions/fake_sub')
+
+    # Add some extra PTransform afterwards to make sure that only the unbounded
+    # sources remain.
+    c = (a, b) | beam.CoGroupByKey()
+    _ = c | beam.Map(lambda x: x)
+
+    ib.watch(locals())
+    instrumenter = instr.pin(p)
+    actual_pipeline = instrumenter.background_caching_pipeline_proto()
+
+    # Now recreate the expected pipeline, which should only have the unbounded
+    # sources.
+    p = beam.Pipeline(interactive_runner.InteractiveRunner())
+    a = p | 'ReadUnboundedSourceA' >> beam.io.ReadFromPubSub(
+        subscription='projects/fake-project/subscriptions/fake_sub')
+    _ = a | 'a' >> cache.WriteCache(ie.current_env().cache_manager(), '')
+
+    b = p | 'ReadUnboundedSourceB' >> beam.io.ReadFromPubSub(
+        subscription='projects/fake-project/subscriptions/fake_sub')
+    _ = b | 'b' >> cache.WriteCache(ie.current_env().cache_manager(), '')
+
+    expected_pipeline = p.to_runner_api(return_context=False,
+                                        use_fake_coders=True)
+
+    self.assertPipelineProtoEqual(actual_pipeline, expected_pipeline)
 
   def _example_pipeline(self, watch=True):
     p = beam.Pipeline(interactive_runner.InteractiveRunner())
@@ -244,11 +283,11 @@ class PipelineInstrumentTest(unittest.TestCase):
 
     # Mock as if cacheable PCollections are cached.
     init_pcoll_cache_key = 'init_pcoll_' + str(
-        id(init_pcoll)) + '_ref_PCollection_PCollection_1_' + str(id(
+        id(init_pcoll)) + '_ref_PCollection_PCollection_10_' + str(id(
             init_pcoll.producer))
     self._mock_write_cache(init_pcoll, init_pcoll_cache_key)
     second_pcoll_cache_key = 'second_pcoll_' + str(
-        id(second_pcoll)) + '_ref_PCollection_PCollection_2_' + str(id(
+        id(second_pcoll)) + '_ref_PCollection_PCollection_11_' + str(id(
             second_pcoll.producer))
     self._mock_write_cache(second_pcoll, second_pcoll_cache_key)
     ie.current_env().cache_manager().exists = MagicMock(return_value=True)

@@ -297,7 +297,7 @@ class BeamModulePlugin implements Plugin<Project> {
 
     // Automatically use the official release version if we are performing a release
     // otherwise append '-SNAPSHOT'
-    project.version = '2.18.0'
+    project.version = '2.19.0'
     if (!isRelease(project)) {
       project.version += '-SNAPSHOT'
     }
@@ -373,7 +373,7 @@ class BeamModulePlugin implements Plugin<Project> {
     def google_cloud_spanner_version = "1.6.0"
     def grpc_version = "1.17.1"
     def guava_version = "20.0"
-    def hadoop_version = "2.7.3"
+    def hadoop_version = "2.8.5"
     def hamcrest_version = "2.1"
     def jackson_version = "2.9.10"
     def jaxb_api_version = "2.2.12"
@@ -386,6 +386,7 @@ class BeamModulePlugin implements Plugin<Project> {
     def protobuf_version = "3.6.0"
     def quickcheck_version = "0.8"
     def spark_version = "2.4.4"
+    def spark_structured_streaming_version = "2.4.0"
 
     // A map of maps containing common libraries used per language. To use:
     // dependencies {
@@ -420,6 +421,7 @@ class BeamModulePlugin implements Plugin<Project> {
         aws_java_sdk2_dynamodb                      : "software.amazon.awssdk:dynamodb:$aws_java_sdk2_version",
         aws_java_sdk2_sdk_core                      : "software.amazon.awssdk:sdk-core:$aws_java_sdk2_version",
         aws_java_sdk2_sns                           : "software.amazon.awssdk:sns:$aws_java_sdk2_version",
+        aws_java_sdk2_sqs                           : "software.amazon.awssdk:sqs:$aws_java_sdk2_version",
         bigdataoss_gcsio                            : "com.google.cloud.bigdataoss:gcsio:$google_cloud_bigdataoss_version",
         bigdataoss_util                             : "com.google.cloud.bigdataoss:util:$google_cloud_bigdataoss_version",
         cassandra_driver_core                       : "com.datastax.cassandra:cassandra-driver-core:$cassandra_driver_version",
@@ -516,6 +518,7 @@ class BeamModulePlugin implements Plugin<Project> {
         snappy_java                                 : "org.xerial.snappy:snappy-java:1.1.4",
         spark_core                                  : "org.apache.spark:spark-core_2.11:$spark_version",
         spark_network_common                        : "org.apache.spark:spark-network-common_2.11:$spark_version",
+        spark_sql                                   : "org.apache.spark:spark-sql_2.11:$spark_version",
         spark_streaming                             : "org.apache.spark:spark-streaming_2.11:$spark_version",
         stax2_api                                   : "org.codehaus.woodstox:stax2-api:3.1.4",
         vendored_bytebuddy_1_9_3                    : "org.apache.beam:beam-vendor-bytebuddy-1_9_3:0.1",
@@ -1231,9 +1234,14 @@ class BeamModulePlugin implements Plugin<Project> {
       // TODO: Figure out whether we should force all dependency conflict resolution
       // to occur in the "shadow" and "shadowTest" configurations.
       project.configurations.all { config ->
+        // When running beam_Dependency_Check, resolutionStrategy should not be used; otherwise
+        // gradle-versions-plugin does not report the latest versions of the dependencies.
+        def startTasks = project.gradle.startParameter.taskNames
+        def inDependencyUpdates = 'dependencyUpdates' in startTasks || 'runBeamDependencyCheck' in startTasks
+
         // The "errorprone" configuration controls the classpath used by errorprone static analysis, which
         // has different dependencies than our project.
-        if (config.getName() != "errorprone") {
+        if (config.getName() != "errorprone" && !inDependencyUpdates) {
           config.resolutionStrategy {
             force project.library.java.values()
           }
@@ -1592,7 +1600,7 @@ class BeamModulePlugin implements Plugin<Project> {
       def config = it ? it as PortableValidatesRunnerConfiguration : new PortableValidatesRunnerConfiguration()
       def name = config.name
       def beamTestPipelineOptions = [
-        "--runner=org.apache.beam.runners.reference.testing.TestPortableRunner",
+        "--runner=org.apache.beam.runners.portability.testing.TestPortableRunner",
         "--jobServerDriver=${config.jobServerDriver}",
         "--environmentCacheMillis=10000"
       ]
@@ -1671,7 +1679,7 @@ class BeamModulePlugin implements Plugin<Project> {
 
       // Task for running testcases in Java SDK
       def beamJavaTestPipelineOptions = [
-        "--runner=org.apache.beam.runners.reference.testing.TestPortableRunner",
+        "--runner=org.apache.beam.runners.portability.testing.TestPortableRunner",
         "--jobServerDriver=${config.jobServerDriver}",
         "--environmentCacheMillis=10000"
       ]
@@ -1899,11 +1907,13 @@ class BeamModulePlugin implements Plugin<Project> {
         }
       }
 
-      def addPortableWordCountTask = { boolean isStreaming ->
-        project.task('portableWordCount' + (isStreaming ? 'Streaming' : 'Batch')) {
+      def addPortableWordCountTask = { boolean isStreaming, String runner ->
+        project.task('portableWordCount' + (runner.equals("PortableRunner") ? "" : runner) + (isStreaming ? 'Streaming' : 'Batch')) {
           dependsOn = ['installGcpTest']
           mustRunAfter = [
             ':runners:flink:1.9:job-server-container:docker',
+            ':runners:flink:1.9:job-server:shadowJar',
+            ':runners:spark:job-server:shadowJar',
             ':sdks:python:container:py2:docker',
             ':sdks:python:container:py35:docker',
             ':sdks:python:container:py36:docker',
@@ -1914,8 +1924,7 @@ class BeamModulePlugin implements Plugin<Project> {
             def options = [
               "--input=/etc/profile",
               "--output=/tmp/py-wordcount-direct",
-              "--runner=PortableRunner",
-              "--experiments=worker_threads=100",
+              "--runner=${runner}",
               "--parallelism=2",
               "--shutdown_sources_on_final_watermark",
               "--sdk_worker_parallelism=1",
@@ -1953,8 +1962,11 @@ class BeamModulePlugin implements Plugin<Project> {
       }
       project.ext.addPortableWordCountTasks = {
         ->
-        addPortableWordCountTask(false)
-        addPortableWordCountTask(true)
+        addPortableWordCountTask(false, "PortableRunner")
+        addPortableWordCountTask(true, "PortableRunner")
+        addPortableWordCountTask(false, "FlinkRunner")
+        addPortableWordCountTask(true, "FlinkRunner")
+        addPortableWordCountTask(false, "SparkRunner")
       }
     }
   }

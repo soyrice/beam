@@ -33,7 +33,6 @@ import threading
 import time
 import uuid
 from builtins import object
-from concurrent import futures
 
 import grpc
 
@@ -44,7 +43,6 @@ from apache_beam.coders.coder_impl import create_OutputStream
 from apache_beam.metrics import metric
 from apache_beam.metrics import monitoring_infos
 from apache_beam.metrics.execution import MetricResult
-from apache_beam.metrics.execution import MetricsEnvironment
 from apache_beam.options import pipeline_options
 from apache_beam.options.value_provider import RuntimeValueProvider
 from apache_beam.portability import common_urns
@@ -72,10 +70,14 @@ from apache_beam.runners.worker import sdk_worker
 from apache_beam.runners.worker.channel_factory import GRPCChannelFactory
 from apache_beam.runners.worker.sdk_worker import _Future
 from apache_beam.runners.worker.statecache import StateCache
+from apache_beam.transforms import environments
 from apache_beam.transforms import trigger
+from apache_beam.transforms.window import GlobalWindow
 from apache_beam.transforms.window import GlobalWindows
 from apache_beam.utils import profiler
 from apache_beam.utils import proto_utils
+from apache_beam.utils import windowed_value
+from apache_beam.utils.thread_pool_executor import UnboundedThreadPoolExecutor
 
 # This module is experimental. No backwards-compatibility guarantees.
 
@@ -88,6 +90,8 @@ ENCODED_IMPULSE_VALUE = beam.coders.WindowedValueCoder(
 # test which runs without state caching (FnApiRunnerTestWithDisabledCaching).
 # The cache is disabled in production for other runners.
 STATE_CACHE_SIZE = 100
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ControlConnection(object):
@@ -188,9 +192,9 @@ class BeamFnControlServicer(beam_fn_api_pb2_grpc.BeamFnControlServicer):
 
   def done(self):
     self._state = self.DONE_STATE
-    logging.debug('Runner: Requests sent by runner: %s',
+    _LOGGER.debug('Runner: Requests sent by runner: %s',
                   [(str(req), cnt) for req, cnt in self._req_sent.items()])
-    logging.debug('Runner: Requests multiplexing info: %s',
+    _LOGGER.debug('Runner: Requests multiplexing info: %s',
                   [(str(req), worker) for req, worker
                    in self._req_worker_mapping.items()])
 
@@ -234,7 +238,15 @@ class _GroupingBuffer(object):
     """
     if not self._grouped_output:
       if self._windowing.is_default():
-        globally_window = GlobalWindows.windowed_value(None).with_value
+        globally_window = GlobalWindows.windowed_value(
+            None,
+            timestamp=GlobalWindow().max_timestamp(),
+            pane_info=windowed_value.PaneInfo(
+                is_first=True,
+                is_last=True,
+                timing=windowed_value.PaneInfoTiming.ON_TIME,
+                index=0,
+                nonspeculative_index=0)).with_value
         windowed_key_values = lambda key, values: [
             globally_window((key, values))]
       else:
@@ -273,11 +285,11 @@ class _WindowGroupingBuffer(object):
     # Here's where we would use a different type of partitioning
     # (e.g. also by key) for a different access pattern.
     if access_pattern.urn == common_urns.side_inputs.ITERABLE.urn:
-      self._kv_extrator = lambda value: ('', value)
+      self._kv_extractor = lambda value: ('', value)
       self._key_coder = coders.SingletonCoder('')
       self._value_coder = coder.wrapped_value_coder
     elif access_pattern.urn == common_urns.side_inputs.MULTIMAP.urn:
-      self._kv_extrator = lambda value: value
+      self._kv_extractor = lambda value: value
       self._key_coder = coder.wrapped_value_coder.key_coder()
       self._value_coder = (
           coder.wrapped_value_coder.value_coder())
@@ -293,7 +305,7 @@ class _WindowGroupingBuffer(object):
     while input_stream.size() > 0:
       windowed_value = self._windowed_value_coder.get_impl(
           ).decode_from_stream(input_stream, True)
-      key, value = self._kv_extrator(windowed_value.value)
+      key, value = self._kv_extractor(windowed_value.value)
       for window in windowed_value.windows:
         self._values_by_window[key, window].append(value)
 
@@ -334,7 +346,7 @@ class FnApiRunner(runner.PipelineRunner):
     self._last_uid = -1
     self._default_environment = (
         default_environment
-        or beam_runner_api_pb2.Environment(urn=python_urns.EMBEDDED_PYTHON))
+        or environments.EmbeddedPythonEnvironment())
     self._bundle_repeat = bundle_repeat
     self._num_workers = 1
     self._progress_frequency = progress_request_frequency
@@ -351,7 +363,6 @@ class FnApiRunner(runner.PipelineRunner):
     return str(self._last_uid)
 
   def run_pipeline(self, pipeline, options):
-    MetricsEnvironment.set_metrics_supported(False)
     RuntimeValueProvider.set_runtime_options({})
 
     # Setup "beam_fn_api" experiment options if lacked.
@@ -373,9 +384,6 @@ class FnApiRunner(runner.PipelineRunner):
         pipeline_options.DirectOptions).direct_num_workers or self._num_workers
     self._profiler_factory = profiler.Profile.factory_from_options(
         options.view_as(pipeline_options.ProfilingOptions))
-
-    if 'use_sdf_bounded_source' in experiments:
-      pipeline.replace_all(DataflowRunner._SDF_PTRANSFORM_OVERRIDES)
 
     self._latest_run_result = self.run_via_runner_api(pipeline.to_runner_api(
         default_environment=self._default_environment))
@@ -404,7 +412,7 @@ class FnApiRunner(runner.PipelineRunner):
       with profiler:
         yield
       if not self._bundle_repeat:
-        logging.warning(
+        _LOGGER.warning(
             'The --direct_runner_bundle_repeat option is not set; '
             'a significant portion of the profile may be one-time overhead.')
       path = profiler.profile_output
@@ -490,14 +498,27 @@ class FnApiRunner(runner.PipelineRunner):
       elements_by_window = _WindowGroupingBuffer(si, value_coder)
       for element_data in pcoll_buffers[buffer_id]:
         elements_by_window.append(element_data)
-      for key, window, elements_data in elements_by_window.encoded_items():
-        state_key = beam_fn_api_pb2.StateKey(
-            multimap_side_input=beam_fn_api_pb2.StateKey.MultimapSideInput(
-                transform_id=transform_id,
-                side_input_id=tag,
-                window=window,
-                key=key))
-        worker_handler.state.append_raw(state_key, elements_data)
+
+      if si.urn == common_urns.side_inputs.ITERABLE.urn:
+        for _, window, elements_data in elements_by_window.encoded_items():
+          state_key = beam_fn_api_pb2.StateKey(
+              iterable_side_input=beam_fn_api_pb2.StateKey.IterableSideInput(
+                  transform_id=transform_id,
+                  side_input_id=tag,
+                  window=window))
+          worker_handler.state.append_raw(state_key, elements_data)
+      elif si.urn == common_urns.side_inputs.MULTIMAP.urn:
+        for key, window, elements_data in elements_by_window.encoded_items():
+          state_key = beam_fn_api_pb2.StateKey(
+              multimap_side_input=beam_fn_api_pb2.StateKey.MultimapSideInput(
+                  transform_id=transform_id,
+                  side_input_id=tag,
+                  window=window,
+                  key=key))
+          worker_handler.state.append_raw(state_key, elements_data)
+      else:
+        raise ValueError(
+            "Unknown access pattern: '%s'" % si.urn)
 
   def _run_bundle_multiple_times_for_testing(
       self, worker_handler_list, process_bundle_descriptor, data_input,
@@ -669,7 +690,7 @@ class FnApiRunner(runner.PipelineRunner):
         pipeline_components, iterable_state_write=iterable_state_write)
     data_api_service_descriptor = worker_handler.data_api_service_descriptor()
 
-    logging.info('Running %s', stage.name)
+    _LOGGER.info('Running %s', stage.name)
     data_input, data_side_input, data_output = self._extract_endpoints(
         stage, pipeline_components, data_api_service_descriptor, pcoll_buffers)
 
@@ -1134,13 +1155,15 @@ class EmbeddedWorkerHandler(WorkerHandler):
     self.control_conn = self
     self.data_conn = self.data_plane_handler
     state_cache = StateCache(STATE_CACHE_SIZE)
+    self.bundle_processor_cache = sdk_worker.BundleProcessorCache(
+        FnApiRunner.SingletonStateHandlerFactory(
+            sdk_worker.CachingStateHandler(state_cache, state)),
+        data_plane.InMemoryDataChannelFactory(
+            self.data_plane_handler.inverse()),
+        {})
     self.worker = sdk_worker.SdkWorker(
-        sdk_worker.BundleProcessorCache(
-            FnApiRunner.SingletonStateHandlerFactory(
-                sdk_worker.CachingStateHandler(state_cache, state)),
-            data_plane.InMemoryDataChannelFactory(
-                self.data_plane_handler.inverse()),
-            {}), state_cache_metrics_fn=state_cache.get_monitoring_infos)
+        self.bundle_processor_cache,
+        state_cache_metrics_fn=state_cache.get_monitoring_infos)
     self._uid_counter = 0
 
   def push(self, request):
@@ -1154,7 +1177,7 @@ class EmbeddedWorkerHandler(WorkerHandler):
     pass
 
   def stop_worker(self):
-    self.worker.stop()
+    self.bundle_processor_cache.shutdown()
 
   def done(self):
     pass
@@ -1215,12 +1238,10 @@ class GrpcServer(object):
 
   _DEFAULT_SHUTDOWN_TIMEOUT_SECS = 5
 
-  def __init__(self, state, provision_info, max_workers):
+  def __init__(self, state, provision_info):
     self.state = state
     self.provision_info = provision_info
-    self.max_workers = max_workers
-    self.control_server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=self.max_workers))
+    self.control_server = grpc.server(UnboundedThreadPoolExecutor())
     self.control_port = self.control_server.add_insecure_port('[::]:0')
     self.control_address = 'localhost:%s' % self.control_port
 
@@ -1230,12 +1251,12 @@ class GrpcServer(object):
     no_max_message_sizes = [("grpc.max_receive_message_length", -1),
                             ("grpc.max_send_message_length", -1)]
     self.data_server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=self.max_workers),
+        UnboundedThreadPoolExecutor(),
         options=no_max_message_sizes)
     self.data_port = self.data_server.add_insecure_port('[::]:0')
 
     self.state_server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=self.max_workers),
+        UnboundedThreadPoolExecutor(),
         options=no_max_message_sizes)
     self.state_port = self.state_server.add_insecure_port('[::]:0')
 
@@ -1271,17 +1292,17 @@ class GrpcServer(object):
         self.state_server)
 
     self.logging_server = grpc.server(
-        futures.ThreadPoolExecutor(max_workers=2),
+        UnboundedThreadPoolExecutor(),
         options=no_max_message_sizes)
     self.logging_port = self.logging_server.add_insecure_port('[::]:0')
     beam_fn_api_pb2_grpc.add_BeamFnLoggingServicer_to_server(
         BasicLoggingService(),
         self.logging_server)
 
-    logging.info('starting control server on port %s', self.control_port)
-    logging.info('starting data server on port %s', self.data_port)
-    logging.info('starting state server on port %s', self.state_port)
-    logging.info('starting logging server on port %s', self.logging_port)
+    _LOGGER.info('starting control server on port %s', self.control_port)
+    _LOGGER.info('starting data server on port %s', self.data_port)
+    _LOGGER.info('starting state server on port %s', self.state_port)
+    _LOGGER.info('starting logging server on port %s', self.logging_port)
     self.logging_server.start()
     self.state_server.start()
     self.data_server.start()
@@ -1366,6 +1387,9 @@ class ExternalWorkerHandler(GrpcWorkerHandler):
     pass
 
   def host_from_worker(self):
+    # TODO(BEAM-8646): Reconcile the behavior on Windows platform.
+    if sys.platform == 'win32':
+      return 'localhost'
     import socket
     return socket.getfqdn()
 
@@ -1376,17 +1400,15 @@ class EmbeddedGrpcWorkerHandler(GrpcWorkerHandler):
     super(EmbeddedGrpcWorkerHandler, self).__init__(state, provision_info,
                                                     grpc_server)
     if payload:
-      num_workers, state_cache_size = payload.decode('ascii').split(',')
-      self._num_threads = int(num_workers)
+      state_cache_size = payload.decode('ascii')
       self._state_cache_size = int(state_cache_size)
     else:
-      self._num_threads = 1
       self._state_cache_size = STATE_CACHE_SIZE
 
   def start_worker(self):
     self.worker = sdk_worker.SdkHarness(
-        self.control_address, worker_count=self._num_threads,
-        state_cache_size=self._state_cache_size, worker_id=self.worker_id)
+        self.control_address, state_cache_size=self._state_cache_size,
+        worker_id=self.worker_id)
     self.worker_thread = threading.Thread(
         name='run_worker', target=self.worker.run)
     self.worker_thread.daemon = True
@@ -1441,7 +1463,7 @@ class DockerSdkWorkerHandler(GrpcWorkerHandler):
       try:
         subprocess.check_call(['docker', 'pull', self._container_image])
       except Exception:
-        logging.info('Unable to pull image %s' % self._container_image)
+        _LOGGER.info('Unable to pull image %s' % self._container_image)
       self._container_id = subprocess.check_output(
           ['docker',
            'run',
@@ -1462,10 +1484,10 @@ class DockerSdkWorkerHandler(GrpcWorkerHandler):
             '-f',
             '{{.State.Status}}',
             self._container_id]).strip()
-        logging.info('Waiting for docker to start up.Current status is %s' %
+        _LOGGER.info('Waiting for docker to start up.Current status is %s' %
                      status)
         if status == b'running':
-          logging.info('Docker container is running. container_id = %s, '
+          _LOGGER.info('Docker container is running. container_id = %s, '
                        'worker_id = %s', self._container_id, self.worker_id)
           break
         elif status in (b'dead', b'exited'):
@@ -1499,24 +1521,12 @@ class WorkerHandlerManager(object):
       # Any environment will do, pick one arbitrarily.
       environment_id = next(iter(self._environments.keys()))
     environment = self._environments[environment_id]
-    max_total_workers = num_workers * len(self._environments)
 
     # assume all environments except EMBEDDED_PYTHON use gRPC.
     if environment.urn == python_urns.EMBEDDED_PYTHON:
       pass # no need for a gRPC server
     elif self._grpc_server is None:
-      self._grpc_server = GrpcServer(self._state, self._job_provision_info,
-                                     max_total_workers)
-    elif max_total_workers > self._grpc_server.max_workers:
-      # each gRPC server is running with fixed number of threads (
-      # max_total_workers), which is defined by the first call to
-      # get_worker_handlers(). Assumption here is a worker has a connection to a
-      # gRPC server. In case a stage tries to add more workers
-      # than the max_total_workers, some workers cannot connect to gRPC and
-      # pipeline will hang, hence raise an error here.
-      raise RuntimeError('gRPC servers are running with %s threads, we cannot '
-                         'attach %s workers.' % (self._grpc_server.max_workers,
-                                                 max_total_workers))
+      self._grpc_server = GrpcServer(self._state, self._job_provision_info)
 
     worker_handler_list = self._cached_handlers[environment_id]
     if len(worker_handler_list) < num_workers:
@@ -1524,7 +1534,7 @@ class WorkerHandlerManager(object):
         worker_handler = WorkerHandler.create(
             environment, self._state, self._job_provision_info,
             self._grpc_server)
-        logging.info("Created Worker handler %s for environment %s",
+        _LOGGER.info("Created Worker handler %s for environment %s",
                      worker_handler, environment)
         self._cached_handlers[environment_id].append(worker_handler)
         worker_handler.start_worker()
@@ -1536,7 +1546,7 @@ class WorkerHandlerManager(object):
         try:
           worker_handler.close()
         except Exception:
-          logging.error("Error closing worker_handler %s" % worker_handler,
+          _LOGGER.error("Error closing worker_handler %s" % worker_handler,
                         exc_info=True)
     self._cached_handlers = {}
     if self._grpc_server is not None:
@@ -1755,7 +1765,7 @@ class BundleManager(object):
             self._get_buffer(
                 expected_outputs[output.transform_id]).append(output.data)
 
-      logging.debug('Wait for the bundle %s to finish.' % process_bundle_id)
+      _LOGGER.debug('Wait for the bundle %s to finish.' % process_bundle_id)
       result = result_future.get()
 
     if result.error:
@@ -1792,7 +1802,7 @@ class ParallelBundleManager(BundleManager):
 
     merged_result = None
     split_result_list = []
-    with futures.ThreadPoolExecutor(max_workers=self._num_workers) as executor:
+    with UnboundedThreadPoolExecutor() as executor:
       for result, split_result in executor.map(lambda part: BundleManager(
           self._worker_handler_list, self._get_buffer,
           self._get_input_coder_impl, self._bundle_descriptor,
@@ -1851,7 +1861,7 @@ class ProgressRequester(threading.Thread):
         if self._callback:
           self._callback(self._latest_progress)
       except Exception as exn:
-        logging.error("Bad progress: %s", exn)
+        _LOGGER.error("Bad progress: %s", exn)
       time.sleep(self._frequency)
 
   def stop(self):

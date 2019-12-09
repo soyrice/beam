@@ -101,9 +101,11 @@ class TestStreamTest(unittest.TestCase):
                    .advance_processing_time(10)
                    .advance_watermark_to(300)
                    .add_elements([TimestampedValue('late', 12)])
-                   .add_elements([TimestampedValue('last', 310)]))
+                   .add_elements([TimestampedValue('last', 310)])
+                   .advance_watermark_to_infinity())
 
     class RecordFn(beam.DoFn):
+
       def process(self, element=beam.DoFn.ElementParam,
                   timestamp=beam.DoFn.TimestampParam):
         yield (element, timestamp)
@@ -135,7 +137,8 @@ class TestStreamTest(unittest.TestCase):
                    .advance_processing_time(10)
                    .advance_watermark_to(300)
                    .add_elements([TimestampedValue('late', 12)])
-                   .add_elements([TimestampedValue('last', 310)]))
+                   .add_elements([TimestampedValue('last', 310)])
+                   .advance_watermark_to_infinity())
 
     options = PipelineOptions()
     options.view_as(StandardOptions).streaming = True
@@ -166,7 +169,6 @@ class TestStreamTest(unittest.TestCase):
     assert_that(
         records,
         equal_to_per_window(expected_window_to_elements),
-        use_global_window=False,
         label='assert per window')
 
     p.run()
@@ -174,8 +176,10 @@ class TestStreamTest(unittest.TestCase):
   def test_gbk_execution_after_watermark_trigger(self):
     test_stream = (TestStream()
                    .advance_watermark_to(10)
-                   .add_elements(['a'])
-                   .advance_watermark_to(20))
+                   .add_elements([TimestampedValue('a', 11)])
+                   .advance_watermark_to(20)
+                   .add_elements([TimestampedValue('b', 21)])
+                   .advance_watermark_to_infinity())
 
     options = PipelineOptions()
     options.view_as(StandardOptions).streaming = True
@@ -195,15 +199,18 @@ class TestStreamTest(unittest.TestCase):
 
     # assert per window
     expected_window_to_elements = {
-        window.IntervalWindow(15, 30): [
+        window.IntervalWindow(0, 15): [
             ('k', ['a']),
-            ('k', []),
+            ('k', [])
+        ],
+        window.IntervalWindow(15, 30): [
+            ('k', ['b']),
+            ('k', [])
         ],
     }
     assert_that(
         records,
         equal_to_per_window(expected_window_to_elements),
-        use_global_window=False,
         label='assert per window')
 
     p.run()
@@ -217,7 +224,8 @@ class TestStreamTest(unittest.TestCase):
     test_stream = (TestStream()
                    .advance_watermark_to(10)
                    .add_elements(['a'])
-                   .advance_processing_time(5.1))
+                   .advance_processing_time(5.1)
+                   .advance_watermark_to_infinity())
 
     options = PipelineOptions()
     options.view_as(StandardOptions).streaming = True
@@ -242,7 +250,6 @@ class TestStreamTest(unittest.TestCase):
     assert_that(
         records,
         equal_to_per_window(expected_window_to_elements),
-        use_global_window=False,
         label='assert per window')
 
     p.run()
@@ -255,22 +262,24 @@ class TestStreamTest(unittest.TestCase):
     main_stream = (p
                    | 'main TestStream' >> TestStream()
                    .advance_watermark_to(10)
-                   .add_elements(['e']))
+                   .add_elements(['e'])
+                   .advance_watermark_to_infinity())
     side = (p
             | beam.Create([2, 1, 4])
             | beam.Map(lambda t: window.TimestampedValue(t, t)))
 
     class RecordFn(beam.DoFn):
+
       def process(self,
                   elm=beam.DoFn.ElementParam,
                   ts=beam.DoFn.TimestampParam,
                   side=beam.DoFn.SideInputParam):
-        yield (elm, ts, side)
+        yield (elm, ts, sorted(side))
 
     records = (main_stream     # pylint: disable=unused-variable
                | beam.ParDo(RecordFn(), beam.pvalue.AsList(side)))
 
-    assert_that(records, equal_to([('e', Timestamp(10), [2, 1, 4])]))
+    assert_that(records, equal_to([('e', Timestamp(10), [1, 2, 4])]))
 
     p.run()
 
@@ -316,6 +325,7 @@ class TestStreamTest(unittest.TestCase):
                    .add_elements(['a'])
                    .advance_watermark_to(4)
                    .add_elements(['b'])
+                   .advance_watermark_to_infinity()
                    | 'main window' >> beam.WindowInto(window.FixedWindows(1)))
     side = (p
             | beam.Create([2, 1, 4])
@@ -323,6 +333,7 @@ class TestStreamTest(unittest.TestCase):
             | beam.WindowInto(window.FixedWindows(2)))
 
     class RecordFn(beam.DoFn):
+
       def process(self,
                   elm=beam.DoFn.ElementParam,
                   ts=beam.DoFn.TimestampParam,
@@ -334,13 +345,12 @@ class TestStreamTest(unittest.TestCase):
 
     # assert per window
     expected_window_to_elements = {
-        window.IntervalWindow(2, 3):[('a', Timestamp(2), [2])],
-        window.IntervalWindow(4, 5):[('b', Timestamp(4), [4])]
+        window.IntervalWindow(2, 3): [('a', Timestamp(2), [2])],
+        window.IntervalWindow(4, 5): [('b', Timestamp(4), [4])]
     }
     assert_that(
         records,
         equal_to_per_window(expected_window_to_elements),
-        use_global_window=False,
         label='assert per window')
 
     p.run()
@@ -394,7 +404,6 @@ class TestStreamTest(unittest.TestCase):
     assert_that(
         records,
         equal_to_per_window(expected_window_to_elements),
-        use_global_window=False,
         label='assert per window')
 
     p.run()
